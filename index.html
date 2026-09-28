@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realm of Numeraria: Fraction Quest 3D</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Kanit', sans-serif; background-color: #0f172a; color: white; user-select: none; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        .glass { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .neon-border { box-shadow: 0 0 15px rgba(56, 189, 248, 0.5); }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay -->
+    <div class="absolute top-4 left-4 flex flex-col gap-3 pointer-events-none">
+        <!-- Player Stats -->
+        <div class="glass p-4 rounded-2xl flex items-center gap-4 pointer-events-auto min-w-[240px]">
+            <div class="relative w-12 h-12 rounded-full bg-gradient-to-tr from-cyan-500 to-fuchsia-500 flex items-center justify-center font-bold text-xl border-2 border-white shadow-lg">
+                <span id="level-display">1</span>
+            </div>
+            <div class="flex-1">
+                <div class="flex justify-between text-xs font-semibold mb-1">
+                    <span class="text-cyan-400">HP (พลังชีวิต)</span>
+                    <span id="hp-text">100/100</span>
+                </div>
+                <div class="w-full bg-slate-700 h-2.5 rounded-full overflow-hidden mb-2">
+                    <div id="hp-bar" class="bg-gradient-to-r from-emerald-400 to-cyan-400 h-full transition-all duration-300" style="width: 100%"></div>
+                </div>
+                <div class="flex justify-between text-xs font-semibold mb-1">
+                    <span class="text-fuchsia-400">EXP (ประสบการณ์)</span>
+                    <span id="exp-text">0/100</span>
+                </div>
+                <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                    <div id="exp-bar" class="bg-gradient-to-r from-fuchsia-500 to-pink-500 h-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inventory / Gems -->
+        <div class="glass px-4 py-2 rounded-xl flex items-center gap-3 pointer-events-auto w-fit">
+            <span class="text-xl">💎</span>
+            <span class="text-sm font-semibold">Gems: <span id="gem-count" class="text-yellow-400 font-bold">0</span></span>
+        </div>
+    </div>
+
+    <!-- Mini Map -->
+    <div class="absolute top-4 right-4 pointer-events-none">
+        <div class="glass p-2 rounded-2xl border-2 border-cyan-500/30 neon-border pointer-events-auto relative w-36 h-36 flex items-center justify-center overflow-hidden">
+            <div class="text-[10px] absolute top-1 left-2 font-bold text-cyan-400 opacity-80">MINI MAP</div>
+            <canvas id="minimap" width="120" height="120" class="rounded-xl bg-slate-900/80"></canvas>
+        </div>
+    </div>
+
+    <!-- Quest Tracker -->
+    <div class="absolute bottom-6 left-4 pointer-events-none">
+        <div class="glass p-4 rounded-xl max-w-xs pointer-events-auto border-l-4 border-cyan-400">
+            <h3 class="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-1">🎯 ภารกิจปัจจุบัน</h3>
+            <p id="quest-text" class="text-sm font-light text-slate-200">เดินสำรวจตามจุดคริสตัลสีเหลือง เพื่อตอบปัญหาเศษส่วน ม.ปลาย</p>
+        </div>
+    </div>
+
+    <!-- Controls Guide -->
+    <div class="absolute bottom-6 right-4 pointer-events-none hidden md:block">
+        <div class="glass px-4 py-3 rounded-xl text-xs text-slate-300 space-y-1">
+            <div>🎮 <span class="font-bold text-white">W A S D</span> / <span class="font-bold text-white">ลูกศร</span> : เคลื่อนที่</div>
+            <div>อาณาจักร <span class="text-cyan-400 font-bold">Realm of Numeraria</span></div>
+        </div>
+    </div>
+
+    <!-- Quiz Modal -->
+    <div id="quiz-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center hidden z-50 p-4">
+        <div class="glass p-6 md:p-8 rounded-3xl max-w-lg w-full border border-cyan-500/30 neon-border transform transition-all scale-95 opacity-0 duration-300" id="quiz-box">
+            <div class="flex justify-between items-center mb-4">
+                <span class="text-xs font-bold uppercase tracking-wider text-fuchsia-400 bg-fuchsia-950/50 px-3 py-1 rounded-full border border-fuchsia-800">โจทย์วิชาคณิตศาสตร์ (เศษส่วน)</span>
+                <span class="text-xs text-slate-400">ม.ปลาย</span>
+            </div>
+            
+            <h2 id="quiz-question" class="text-lg md:text-xl font-medium mb-6 text-white leading-relaxed">คำถามจะปรากฏที่นี่...</h2>
+
+            <div id="quiz-options" class="grid grid-cols-1 gap-3 mb-6">
+                <!-- Options injected by JS -->
+            </div>
+
+            <div id="quiz-feedback" class="text-center font-semibold text-sm min-h-[24px]"></div>
+        </div>
+    </div>
+
+    <!-- Respawn Overlay -->
+    <div id="respawn-screen" class="fixed inset-0 bg-red-950/90 backdrop-blur-lg flex flex-col items-center justify-center hidden z-50">
+        <h1 class="text-4xl font-extrabold text-red-500 mb-2 tracking-wider animate-pulse">พลังชีวิตหมดลง!</h1>
+        <p class="text-slate-300 mb-6">กำลังวาร์ปกลับไปยังจุดเกิดใหม่ (Respawn Shrine)...</p>
+        <div class="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+
+    <script>
+        // --- GAME STATE ---
+        const player = {
+            x: 0, z: 0,
+            hp: 100, maxHp: 100,
+            exp: 0, maxExp: 100,
+            level: 1,
+            gems: 0,
+            speed: 0.15
+        };
+
+        const keys = {};
+        let activeQuizIndex = null;
+
+        // Math Questions (High School Fractions)
+        const questions = [
+            {
+                q: "จงหาผลบวกของเศษส่วนพหุนาม: \\(\\frac{1}{x} + \\frac{2}{x+1}\\)",
+                options: ["\\(\\frac{3x+1}{x(x+1)}\\)", "\\(\\frac{3}{2x+1}\\)", "\\(\\frac{x+3}{x(x+1)}\\)", "\\(\\frac{3x+2}{x^2}\\)"],
+                correct: 0
+            },
+            {
+                q: "ทำให้อยู่ในรูปอย่างง่าย: \\(\\frac{x^2 - 4}{x - 2}\\)",
+                options: ["x - 2", "x + 2", "x^2 + 2", "2x"],
+                correct: 1
+            },
+            {
+                q: "หาค่าของ \\(x\\) จากสมการ: \\(\\frac{3}{x} = \\frac{6}{x+2}\\)",
+                options: ["x = 1", "x = 3", "x = 2", "x = 4"],
+                correct: 2
+            },
+            {
+                q: "ผลคูณของ \\(\\frac{x-1}{x+3} \\times \\frac{x+3}{x^2-1}\\) เท่ากับเท่าใด",
+                options: ["\\(\\frac{1}{x+1}\\)", "\\(\\frac{1}{x-1}\\)", "\\(x+1\\)", "1"],
+                correct: 0
+            }
+        ];
+
+        // --- THREE.JS SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0f172a, 0.03);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0x38bdf8, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 40, 20);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // World Objects
+        // Ground
+        const gridHelper = new THREE.GridHelper(100, 50, 0x00fff5, 0x1e293b);
+        gridHelper.position.y = -0.01;
+        scene.add(gridHelper);
+
+        const planeGeo = new THREE.PlaneGeometry(100, 100);
+        const planeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+        const floor = new THREE.Mesh(planeGeo, planeMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Player Model
+        const playerGroup = new THREE.Group();
+        const bodyGeo = new THREE.CylinderGeometry(0.4, 0.2, 1.2, 8);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x00fff5, emissive: 0x005577, roughness: 0.2 });
+        const playerMesh = new THREE.Mesh(bodyGeo, bodyMat);
+        playerMesh.position.y = 0.6;
+        playerMesh.castShadow = true;
+        playerGroup.add(playerMesh);
+
+        // Glow ring around player
+        const ringGeo = new THREE.RingGeometry(0.5, 0.7, 16);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0x00fff5, side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = 0.02;
+        playerGroup.add(ring);
+
+        scene.add(playerGroup);
+
+        // Quest Crystals (Points of Interest)
+        const crystals = [];
+        const crystalPositions = [
+            { x: 10, z: -10 },
+            { x: -12, z: -15 },
+            { x: 15, z: 12 },
+            { x: -10, z: 10 }
+        ];
+
+        const crystalGeo = new THREE.OctahedronGeometry(0.8, 0);
+        const crystalMat = new THREE.MeshStandardMaterial({ color: 0xeab308, emissive: 0xca8a04, roughness: 0.1, metalness: 0.8 });
+
+        crystalPositions.forEach((pos, idx) => {
+            const crystal = new THREE.Mesh(crystalGeo, crystalMat);
+            crystal.position.set(pos.x, 1, pos.z);
+            crystal.castShadow = true;
+            crystal.userData = { id: idx, active: true };
+            scene.add(crystal);
+            crystals.push(crystal);
+        });
+
+        // Respawn Shrine (Origin)
+        const shrineGeo = new THREE.BoxGeometry(2, 0.2, 2);
+        const shrineMat = new THREE.MeshStandardMaterial({ color: 0xec4899, emissive: 0x831843 });
+        const shrine = new THREE.Mesh(shrineGeo, shrineMat);
+        shrine.position.set(0, 0.1, 0);
+        scene.add(shrine);
+
+        // --- CONTROLS ---
+        window.addEventListener('keydown', (e) => keys[e.key.toLowerCase()] = true);
+        window.addEventListener('keyup', (e) => keys[e.key.toLowerCase()] = false);
+
+        // --- GAME LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Player Movement
+            let moveX = 0;
+            let moveZ = 0;
+
+            if (keys['w'] || keys['arrowup']) moveZ -= 1;
+            if (keys['s'] || keys['arrowdown']) moveZ += 1;
+            if (keys['a'] || keys['arrowleft']) moveX -= 1;
+            if (keys['d'] || keys['arrowright']) moveX += 1;
+
+            if (moveX !== 0 || moveZ !== 0) {
+                const length = Math.sqrt(moveX * moveX + moveZ * moveZ);
+                player.x += (moveX / length) * player.speed;
+                player.z += (moveZ / length) * player.speed;
+                playerGroup.position.set(player.x, 0, player.z);
+            }
+
+            // Camera Tracking
+            camera.position.set(player.x, 10, player.z + 12);
+            camera.lookAt(player.x, 0, player.z);
+
+            // Rotate Crystals & Check Interaction
+            crystals.forEach(c => {
+                if (c.userData.active) {
+                    c.rotation.y += 0.02;
+                    c.position.y = 1 + Math.sin(Date.now() * 0.003) * 0.2;
+
+                    // Distance check
+                    const dist = Math.hypot(player.x - c.position.x, player.z - c.position.z);
+                    if (dist < 1.5) {
+                        openQuiz(c.userData.id);
+                    }
+                }
+            });
+
+            drawMinimap();
+            renderer.render(scene, camera);
+        }
+
+        // --- MINIMAP ---
+        const minimapCanvas = document.getElementById('minimap');
+        const mapCtx = minimapCanvas.getContext('2d');
+
+        function drawMinimap() {
+            mapCtx.clearRect(0, 0, 120, 120);
+            
+            // Map Scale Factor
+            const scale = 1.2;
+            const cx = 60;
+            const cy = 60;
+
+            // Draw Player
+            mapCtx.fillStyle = '#00fff5';
+            mapCtx.beginPath();
+            mapCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+            mapCtx.fill();
+
+            // Draw Crystals
+            crystals.forEach(c => {
+                if (c.userData.active) {
+                    const mapX = cx + (c.position.x - player.x) * scale;
+                    const mapY = cy + (c.position.z - player.z) * scale;
+
+                    if (mapX >= 0 && mapX <= 120 && mapY >= 0 && mapY <= 120) {
+                        mapCtx.fillStyle = '#eab308';
+                        mapCtx.beginPath();
+                        mapCtx.arc(mapX, mapY, 3, 0, Math.PI * 2);
+                        mapCtx.fill();
+                    }
+                }
+            });
+        }
+
+        // --- QUIZ & SYSTEM LOGIC ---
+        function openQuiz(index) {
+            activeQuizIndex = index;
+            const qData = questions[index % questions.length];
+            
+            document.getElementById('quiz-question').innerText = qData.q.replace(/\\\(\vert{}\\\)/g, '');
+            const optionsContainer = document.getElementById('quiz-options');
+            optionsContainer.innerHTML = '';
+
+            qData.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full text-left px-4 py-3 rounded-xl bg-slate-800/80 hover:bg-cyan-600/30 border border-slate-700 hover:border-cyan-400 transition-all text-sm font-light flex items-center justify-between";
+                btn.innerHTML = `<span>${opt.replace(/\\\(|\\\)/g, '')}</span> <span class="text-xs text-slate-500">[${idx+1}]</span>`;
+                btn.onclick = () => checkAnswer(idx, qData.correct);
+                optionsContainer.appendChild(btn);
+            });
+
+            document.getElementById('quiz-feedback').innerText = '';
+            const modal = document.getElementById('quiz-modal');
+            const box = document.getElementById('quiz-box');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                box.classList.remove('scale-95', 'opacity-0');
+            }, 10);
+        }
+
+        function closeQuiz() {
+            const modal = document.getElementById('quiz-modal');
+            const box = document.getElementById('quiz-box');
+            box.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        function checkAnswer(selected, correct) {
+            const feedback = document.getElementById('quiz-feedback');
+            if (selected === correct) {
+                feedback.className = "text-emerald-400 font-bold text-sm animate-bounce";
+                feedback.innerText = "✨ ถูกต้อง! ได้รับ +50 EXP และ 10 Gems";
+
+                // Rewards
+                addExp(50);
+                player.gems += 10;
+                document.getElementById('gem-count').innerText = player.gems;
+
+                // Deactivate Crystal
+                if (activeQuizIndex !== null) {
+                    crystals[activeQuizIndex].userData.active = false;
+                    crystals[activeQuizIndex].visible = false;
+                }
+
+                setTimeout(closeQuiz, 1200);
+            } else {
+                feedback.className = "text-red-400 font-bold text-sm";
+                feedback.innerText = "❌ คำตอบยังไม่ถูกต้อง! เสียพลังชีวิต -25 HP";
+                
+                player.hp -= 25;
+                updateHpBar();
+
+                if (player.hp <= 0) {
+                    closeQuiz();
+                    triggerRespawn();
+                }
+            }
+        }
+
+        function addExp(amount) {
+            player.exp += amount;
+            if (player.exp >= player.maxExp) {
+                player.level += 1;
+                player.exp -= player.maxExp;
+                player.maxExp = Math.floor(player.maxExp * 1.5);
+                document.getElementById('level-display').innerText = player.level;
+            }
+            document.getElementById('exp-text').innerText = `${player.exp}/${player.maxExp}`;
+            document.getElementById('exp-bar').style.width = `${(player.exp / player.maxExp) * 100}%`;
+        }
+
+        function updateHpBar() {
+            document.getElementById('hp-text').innerText = `${player.hp}/${player.maxHp}`;
+            document.getElementById('hp-bar').style.width = `${(player.hp / player.maxHp) * 100}%`;
+        }
+
+        function triggerRespawn() {
+            const screen = document.getElementById('respawn-screen');
+            screen.classList.remove('hidden');
+
+            setTimeout(() => {
+                player.x = 0;
+                player.z = 0;
+                playerGroup.position.set(0, 0, 0);
+                player.hp = player.maxHp;
+                updateHpBar();
+                screen.classList.add('hidden');
+            }, 2500);
+        }
+
+        // Window Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start
+        animate();
+    </script>
+</body>
+</html>
